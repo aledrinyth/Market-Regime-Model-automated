@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 # Read the historical data from the CSV file and compute additional features
 df = pd.read_csv("data/VAS_historical_data.csv")
 
-print(df.head())
+#print(df.head())
 
 df['Date'] = pd.to_datetime(df['Date'], utc=True)
 df['Daily Log Return'] = df['Close'].pct_change().apply(lambda x: np.log(1 + x))
@@ -38,20 +38,61 @@ df_VIX['Date'] = pd.to_datetime(df_VIX['Date'], utc=True)
 # Merge the VIX data with the main DataFrame on the 'Date' column
 df = df.merge(df_VIX[['Date', 'Close']], on='Date', how='left', suffixes=('', '_VIX'))
 
-print(df)
+#print(df)
 
 
 # Drop rows with any NaN values
+df.replace([np.inf, -np.inf], np.nan, inplace=True)
 df.dropna(inplace=True)
 
-print(df)
+
+
+
 df = df[['Date', 'Close', 'Volume', 'Daily Log Return', '20-Day Rolling Volatility', 
          '50-Day Moving Average', '200-Day Moving Average', 'Distance from 50-Day MA', 
          'Distance from 200-Day MA', 'Max Drawdown', 'Volume Change', 'ATR', 'RSI',
           'MACD', 'MACD Signal', 'Close_VIX']]
 
-# Scale the features using StandardScaler
+
+# Split on Test and Training Data
+split_date = "2022-01-01"
+
+df_train = df[df["Date"] < split_date]
+df_test = df[df["Date"] >= split_date]
+
+
+
+price_cols = [
+    'Volume', 'Daily Log Return', '20-Day Rolling Volatility',
+    '50-Day Moving Average', '200-Day Moving Average',
+    'Distance from 50-Day MA', 'Distance from 200-Day MA',
+    'Max Drawdown', 'Volume Change', 'ATR', 'RSI',
+    'MACD', 'MACD Signal'
+]
+
 scaler = StandardScaler()
 
-df_scaled = df.copy()
+# Fit on training data only to avoid data leakage
+scaler.fit(df_train[price_cols])
 
+scaled_cols = [f"{col}_scaled" for col in price_cols]
+
+train_scaled_values = scaler.transform(df_train[price_cols])
+df_train_scaled = df_train.copy()
+df_train_scaled[scaled_cols] = pd.DataFrame(
+    train_scaled_values,
+    columns=scaled_cols,
+    index=df_train.index
+)
+
+test_scaled_values = scaler.transform(df_test[price_cols])
+df_test_scaled = df_test.copy()
+df_test_scaled[scaled_cols] = pd.DataFrame(
+    test_scaled_values,
+    columns=scaled_cols,
+    index=df_test.index
+)
+
+# Save the scaled versions
+df_train_scaled.to_csv("data/VAS_historical_train_data_engineered.csv", index=False)
+df_test_scaled.to_csv("data/VAS_historical_test_data_engineered.csv", index=False)
