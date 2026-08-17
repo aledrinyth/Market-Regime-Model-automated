@@ -1,0 +1,47 @@
+name: Daily Market Regime Update
+
+# Run at the end of everyday when yyfinance updates its daily data
+on:
+  schedule:
+    # Runs Monday-Friday at 5:30 PM AEST (7:30 AM UTC)
+    - cron: '30 7 * * 1-5'
+  # For manual testing
+  workflow_dispatch:
+
+# General settings
+jobs:
+  run-model:
+    runs-on: ubuntu-latest # To whoever updates this in the future , do anything you want
+
+    steps:
+      # Download the repository code onto the cloud machine
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      # Install Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Install  required Python packages
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Step D: Run your Python script that fetches data & updates the model
+      - name: Run Regime Model Script
+        run: |
+          python data_download.py
+          python feature_eng.py
+          python hmm_model.py
+          python update_model.py
+
+      # Commit and push the generated output file back to the repo
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add latest_regime_data.csv chart.html
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update market regime data [skip ci]" && git push)

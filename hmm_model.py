@@ -2,29 +2,7 @@ import pandas as pd
 from hmmlearn.hmm import GaussianHMM
 import matplotlib.pyplot as plt
 import numpy as np
-
-feature_cols = [
-    "Daily Log Return_scaled",
-    "20-Day Rolling Volatility_scaled",
-    "Distance from 200-Day MA_scaled",
-    "Max Drawdown_scaled",
-    "Volume Change_scaled",
-    "ATR_scaled",
-    "RSI_scaled",
-    "MACD_scaled",
-    "Close_VIX",
-]
-
-# Load train/test files
-train_path = "data/VAS_historical_train_data_engineered.csv"
-test_path = "data/VAS_historical_test_data_engineered.csv"
-
-df_train = pd.read_csv(train_path)
-df_test = pd.read_csv(test_path)
-
-# Prepare the feature matrix
-X_train = df_train[feature_cols].values
-X_test = df_test[feature_cols].values
+import plotly.graph_objects as go
 
 
 def evaluate_model(model, X_train, X_test, df_train):
@@ -202,58 +180,95 @@ def find_optimal_hmm_states(X_train, X_test, df_train, max_states=10):
     print(comparison_df)
 
 
-# Fit the HMM
-model = GaussianHMM(
-    n_components=3,
-    covariance_type="full",
-    n_iter=500,
-    random_state=42,
-)
+def main():
 
-model.fit(X_train)
-train_states = model.predict(X_train)
-test_states = model.predict(X_test)
+    feature_cols = [
+        "Daily Log Return_scaled",
+        "20-Day Rolling Volatility_scaled",
+        "Distance from 200-Day MA_scaled",
+        "Max Drawdown_scaled",
+        "Volume Change_scaled",
+        "ATR_scaled",
+        "RSI_scaled",
+        "MACD_scaled",
+        "Close_VIX",
+    ]
 
-df_train["State"] = train_states
-df_test["State"] = test_states
+    # Load train/test files
+    train_path = "data/VAS_historical_train_data_engineered.csv"
+    test_path = "data/VAS_historical_test_data_engineered.csv"
 
-df_combined = pd.concat([df_train, df_test], ignore_index=True)
-df_combined["Date"] = pd.to_datetime(df_combined["Date"])
-df_combined = df_combined.sort_values("Date").reset_index(drop=True)
+    df_train = pd.read_csv(train_path)
+    df_test = pd.read_csv(test_path)
+
+    # Prepare the feature matrix
+    X_train = df_train[feature_cols].values
+    X_test = df_test[feature_cols].values
+
+    # Fit the HMM
+    model = GaussianHMM(
+        n_components=3,
+        covariance_type="full",
+        n_iter=500,
+        random_state=42,
+    )
+
+    model.fit(X_train)
+    train_states = model.predict(X_train)
+    test_states = model.predict(X_test)
+
+    df_train["State"] = train_states
+    df_test["State"] = test_states
+
+    df_combined = pd.concat([df_train, df_test], ignore_index=True)
+    df_combined["Date"] = pd.to_datetime(df_combined["Date"])
+    df_combined = df_combined.sort_values("Date").reset_index(drop=True)
 
 
 
-results = evaluate_model(model, X_train, X_test, df_train)
+    results = evaluate_model(model, X_train, X_test, df_train)
 
-print(f"Train Log Likelihood : {results['Train Log Likelihood']:.2f}")
-print(f"Test Log Likelihood  : {results['Test Log Likelihood']:.2f}")
-print(f"AIC                  : {results['AIC']:.2f}")
-print(f"BIC                  : {results['BIC']:.2f}")
-print(f"Average Duration     : {results['Average Regime Duration']:.2f}")
-print(f"Number of Switches   : {results['Number of Switches']}")
+    print(f"Train Log Likelihood : {results['Train Log Likelihood']:.2f}")
+    print(f"Test Log Likelihood  : {results['Test Log Likelihood']:.2f}")
+    print(f"AIC                  : {results['AIC']:.2f}")
+    print(f"BIC                  : {results['BIC']:.2f}")
+    print(f"Average Duration     : {results['Average Regime Duration']:.2f}")
+    print(f"Number of Switches   : {results['Number of Switches']}")
 
-print("\nTransition Matrix")
-print(results["Transition Matrix"])
+    print("\nTransition Matrix")
+    print(results["Transition Matrix"])
 
-print("\nState Summary")
-print(results["State Summary"])
+    print("\nState Summary")
+    print(results["State Summary"])
 
 
 
-# Manually Evaluating and Looking at Model
-print(model.transmat_)
+    # Manually Evaluating and Looking at Model
+    print(model.transmat_)
 
-summary = (
-    df_train
-    .groupby("State")
-    .agg({
-        "Daily Log Return": ["mean", "std"],
-        "20-Day Rolling Volatility": "mean",
-        "Max Drawdown": "mean",
-        "RSI": "mean",
-        "Close": "count"
-    })
-)
+    summary = (
+        df_train
+        .groupby("State")
+        .agg({
+            "Daily Log Return": ["mean", "std"],
+            "20-Day Rolling Volatility": "mean",
+            "Max Drawdown": "mean",
+            "RSI": "mean",
+            "Close": "count"
+        })
+    )
+    pd.set_option("display.max_rows", None)
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.width", 1000)
+    pd.set_option("display.expand_frame_repr", False)
+
+    print(summary.to_string())
+
+    df_combined.to_csv("data/VAS_historical_data_with_three_states.csv", index=False)
+
+    return df_combined, model
+
+
 
 # if 4 states:
 # Regime 0 = Low Volatility & Bullish
@@ -266,15 +281,169 @@ summary = (
 # Regime 1 = High Volatility & Bullish/ Rally
 # Regime 2 = High Volatility & Bearish
 
-pd.set_option("display.max_rows", None)
-pd.set_option("display.max_columns", None)
-pd.set_option("display.width", 1000)
-pd.set_option("display.expand_frame_repr", False)
+def plot_hmm_plotly():
 
-print(summary.to_string())
+    # get the pre requisite data
+    df_combined, model  = main()
+
+    df = df_combined.copy()
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date").reset_index(drop=True)
+
+    no_of_colours = model.n_components
+
+    # regime config for coluors
+
+    if no_of_colours == 3:
+        regime_config = {
+            0: {
+                "label": "Low Volatility & Recovery",
+                "bg_color": "rgba(46, 204, 113, 0.22)",
+                "solid_color": "#2ecc71",
+            },
+            1: {
+                "label": "High Volatility & Bullish / Rally",
+                "bg_color": "rgba(241, 196, 15, 0.22)",
+                "solid_color": "#f1c40f",
+            },
+            2: {
+                "label": "High Volatility & Bearish",
+                "bg_color": "rgba(231, 76, 60, 0.22)",
+                "solid_color": "#e74c3c",
+            },
+
+        }
+    elif no_of_colours == 4: 
+        regime_config = {
+            0: {
+                "label": "Low Volatility & Bullish",
+                "bg_color": "rgba(46, 204, 113, 0.22)",  # Emerald Green
+                "solid_color": "#2ecc71",
+            },
+            1: {
+                "label": "High Volatility & Bearish / Recovery",
+                "bg_color": "rgba(241, 196, 15, 0.22)",  # Amber Yellow
+                "solid_color": "#f1c40f",
+            },
+            2: {
+                "label": "Highish Volatility & Bullish / Recovery",
+                "bg_color": "rgba(155, 89, 182, 0.22)",  # Amethyst Purple - actually looks nice
+                "solid_color": "#9b59b6",
+            },
+            3: {
+                "label": "High Volatility & Bearish",
+                "bg_color": "rgba(231, 76, 60, 0.22)",  # Alizarin Red
+                "solid_color": "#e74c3c",
+            },
+        }
+    else:
+        print("Wrong number of colours meaning wrong number of regimes")
+
+    fig = go.Figure()
+
+    # Add background shaded bands for consecutive states
+    start_idx = 0
+    current_state = int(df["State"].iloc[0])
+
+    for i in range(1, len(df)):
+        next_state = int(df["State"].iloc[i])
+        # Checks whether the next state is the same state so it can chain states for the highlightinf
+        if next_state != current_state:
+            config = regime_config.get(
+                # Set the fallback colour as a light gray with 20% opacity - should be pretty obvious
+                current_state, {"bg_color": "rgba(200, 200, 200, 0.2)"}
+            )
+            fig.add_vrect(
+                x0=df["Date"].iloc[start_idx],
+                x1=df["Date"].iloc[i - 1],
+                fillcolor=config["bg_color"],
+                layer="below",
+                line_width=0,
+            )
+            start_idx = i
+            current_state = next_state
+
+    # Add final regime segment
+    config = regime_config.get(
+        # fallback colour is still gray
+        current_state, {"bg_color": "rgba(200, 200, 200, 0.2)"}
+    )
+    fig.add_vrect(
+        x0=df["Date"].iloc[start_idx],
+        x1=df["Date"].iloc[-1],
+        fillcolor=config["bg_color"],
+        layer="below",
+        line_width=0,
+    )
+
+    # Provides the price line animation and hover animation
+    df["Regime_Label"] = df["State"].map(
+        lambda s: regime_config.get(s, {}).get("label", f"State {s}")
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["Date"],
+            y=df["Close"],
+            mode="lines",
+            name="VAS Close Price",
+            line=dict(color="#1f77b4", width=2),
+            customdata=df["Regime_Label"],
+            hovertemplate=(
+                "<b>Date:</b> %{x|%b %d, %Y}<br>"
+                "<b>Close Price:</b> $%{y:.2f}<br>"
+                "<b>Regime:</b> %{customdata}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    # Add the Legend Items for Regime Colors
+    for state, config in regime_config.items():
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                name=config["label"],
+                marker=dict(size=12, color=config["solid_color"], symbol="square"),
+                showlegend=True,
+            )
+        )
+
+    # Styling and Layout for Streamlit
+    fig.update_layout(
+        title={
+            "text": "<b>VAS Close Price with Hidden Markov Model Regimes</b>",
+            "y": 0.95,
+            "x": 0.05,
+            "xanchor": "left",
+            "yanchor": "top",
+        },
+        xaxis_title="Date",
+        yaxis_title="Close Price ($AUD)",
+        template="plotly_white",
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+        ),
+        margin=dict(l=40, r=40, t=80, b=40),
+        height=600,
+    )
+
+    return fig
+
+
 
 
 def plot_hmm_states(df_combined, model):
+
+
+
     # Plot the price and highlight state regions in the background
     fig, ax = plt.subplots(figsize=(15, 7))
 
@@ -334,6 +503,10 @@ def plot_hmm_states(df_combined, model):
     plt.show()
 
 
-plot_hmm_states(df_combined, model)
 
-df_combined.to_csv("data/VAS_historical_data_with_three_states.csv", index=False)
+# plot_hmm_plotly(df_combined, model)
+
+# plot_hmm_states(df_combined, model)
+
+if __name__ == "__main__":
+    main()
