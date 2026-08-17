@@ -16,7 +16,7 @@ jobs:
     steps:
       # Download the repository code onto the cloud machine
       - name: Checkout repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Install Python
       - name: Set up Python
